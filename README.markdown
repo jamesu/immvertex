@@ -10,22 +10,22 @@ Simply pretend it's still the 90's, and use those GL API's, except instead of "g
 
 For example:
 
-  vxBegin(GL_TRIANGLE_STRIP);
-    vxColor4f(1.0, 1.0, 0.0, 1.0);
-    vxVertex2f(-0.5f, -0.5f);
-    vxColor4f(0.0, 1.0, 1.0, 1.0);
-    vxVertex2f(0.5f,  -0.5f);
-    vxColor4f(0.0, 0.0, 0.0, 0.0);
-    vxVertex2f(-0.5f,  0.5f);
-    vxColor4f(1.0, 0.0, 1.0, 1.0);
-    vxVertex2f(0.5f,   0.5f);
-  vxEnd();
+    vxBegin(GL_TRIANGLE_STRIP);
+      vxColor4f(1.0, 1.0, 0.0, 1.0);
+      vxVertex2f(-0.5f, -0.5f);
+      vxColor4f(0.0, 1.0, 1.0, 1.0);
+      vxVertex2f(0.5f,  -0.5f);
+      vxColor4f(0.0, 0.0, 0.0, 0.0);
+      vxVertex2f(-0.5f,  0.5f);
+      vxColor4f(1.0, 0.0, 1.0, 1.0);
+      vxVertex2f(0.5f,   0.5f);
+    vxEnd();
 
 Will draw a lovely square to the screen!
 
 A word of warning however. When your app exits, you'd best clear the temporary memory used to build the vertex array!
 
-  vxDestroyState();
+    vxDestroyState();
 
 
 ## Wait, hasn't this been done before?
