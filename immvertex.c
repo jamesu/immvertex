@@ -3,7 +3,7 @@
 //
 //  GLES Immediate mode function API for building vertex arrays
 //
-//  Copyright 2009 James Urquhart (jamesu at gmail dot com). All rights reserved.
+//  Copyright 2009-2011 James Urquhart (jamesu at gmail dot com). All rights reserved.
 //  Permission is hereby granted, free of charge, to any person
 //  obtaining a copy of this software and associated documentation
 //  files (the "Software"), to deal in the Software without
@@ -160,58 +160,74 @@ void vxBegin(int flags)
     vstate->verts = 0;
 }
 
+void vxRenderInfo(vxRenderInfo info)
+{
+   if (info.vbo == 0)
+     return;
+
+   glBindBuffer(GL_ARRAY_BUFFER, info.vbo);
+   renderArray(NULL);
+   glBindBuffer(GL_ARRAY_BUFFER, 0);
+}
+
+void vxRenderArray(vxRenderInfo info, void *verts)
+{
+	// present vertex array
+	GLenum correctMode;
+	int correctVerts = vstate->verts;
+	if (vstate->geom == GL_QUADS)
+	   correctMode = GL_TRIANGLES;
+	else if (vstate->geom == GL_QUAD_STRIP) {
+	   correctMode = GL_TRIANGLE_STRIP;
+	   if (correctVerts % 2 != 0)
+	       correctVerts--;
+	}
+	else
+	   correctMode = (GLenum)vstate->geom;
+
+	// Set arrays
+	char *ptr = vstate->buffer;
+	glEnableClientState(GL_VERTEX_ARRAY);
+	glVertexPointer(3, GL_FLOAT, vstate->vertex_size, ptr);
+	ptr += sizeof(float)*3;
+
+	if (vstate->format & VARR_NORMAL) {
+	   glEnableClientState(GL_NORMAL_ARRAY);
+	   glNormalPointer(GL_FLOAT, vstate->vertex_size, ptr);
+	   ptr += sizeof(float)*3;
+	} else
+	   glDisableClientState(GL_NORMAL_ARRAY);
+
+	if (vstate->format & VARR_COLOR) {
+	   glEnableClientState(GL_COLOR_ARRAY);
+	   if (vstate->format & VARR_ALPHA) {
+	       glColorPointer(4, GL_FLOAT, vstate->vertex_size, ptr);
+	       ptr += sizeof(float)*4;
+	   } else {
+	       glColorPointer(3, GL_FLOAT, vstate->vertex_size, ptr);
+	       ptr += sizeof(float)*3;
+	   }
+	} else
+	   glDisableClientState(GL_COLOR_ARRAY);
+
+
+	if (vstate->format & VARR_TEXCOORD0) {
+	   glEnableClientState(GL_TEXTURE_COORD_ARRAY);
+	   glTexCoordPointer(2, GL_FLOAT, vstate->vertex_size, ptr);
+	} else
+	   glDisableClientState(GL_TEXTURE_COORD_ARRAY);
+
+	glDrawArrays(correctMode, 0, vstate->verts);
+}
+
 void vxEnd()
 {
-    if (vstate->vbo == 0) {
-        // present vertex array
-        GLenum correctMode;
-        int correctVerts = vstate->verts;
-        if (vstate->geom == GL_QUADS)
-            correctMode = GL_TRIANGLES;
-        else if (vstate->geom == GL_QUAD_STRIP) {
-            correctMode = GL_TRIANGLE_STRIP;
-            if (correctVerts % 2 != 0)
-                correctVerts--;
-        }
-        else
-            correctMode = (GLenum)vstate->geom;
-        
-        // Set arrays
-        char *ptr = vstate->buffer;
-        glEnableClientState(GL_VERTEX_ARRAY);
-        glVertexPointer(3, GL_FLOAT, vstate->vertex_size, ptr);
-        ptr += sizeof(float)*3;
-        
-        if (vstate->format & VARR_NORMAL) {
-	        glEnableClientState(GL_NORMAL_ARRAY);
-            glNormalPointer(GL_FLOAT, vstate->vertex_size, ptr);
-	        ptr += sizeof(float)*3;
-        } else
-	        glDisableClientState(GL_NORMAL_ARRAY);
-        
-        if (vstate->format & VARR_COLOR) {
-	        glEnableClientState(GL_COLOR_ARRAY);
-	        if (vstate->format & VARR_ALPHA) {
-                glColorPointer(4, GL_FLOAT, vstate->vertex_size, ptr);
-                ptr += sizeof(float)*4;
-	        } else {
-                glColorPointer(3, GL_FLOAT, vstate->vertex_size, ptr);
-                ptr += sizeof(float)*3;
-	        }
-        } else
-	        glDisableClientState(GL_COLOR_ARRAY);
-        
-        
-        if (vstate->format & VARR_TEXCOORD0) {
-	        glEnableClientState(GL_TEXTURE_COORD_ARRAY);
-	        glTexCoordPointer(2, GL_FLOAT, vstate->vertex_size, ptr);
-        } else
-	        glDisableClientState(GL_TEXTURE_COORD_ARRAY);
-        
-        glDrawArrays(correctMode, 0, vstate->verts);
+    vxRenderInfo r_info = vstate->render_info;
+    if (r_info->vbo == 0) {
+		vxRenderArray(r_info, vstate->buffer);
     } else {
         // upload to vbo
-        glBindBuffer(GL_ARRAY_BUFFER, vstate->vbo);
+        glBindBuffer(GL_ARRAY_BUFFER, r_info.vbo);
         glBufferData(GL_ARRAY_BUFFER, 
                      vstate->ptr - vstate->buffer,
                      vstate->buffer,
@@ -238,13 +254,15 @@ void vxStoreVertex2(float x, float y)
     }
     
     if (vstate->format & VARR_COLOR) {
-        *dest++ = vstate->cur_color[0];
-        *dest++ = vstate->cur_color[1];
-        *dest++ = vstate->cur_color[2];
-    }
-    
-    if (vstate->format & VARR_ALPHA) {
-        *dest++ = vstate->cur_color[3];
+        unsigned char *subDest = (unsigned char*)dest;
+        *subDest++ = vstate->cur_color[0] * 255 + 0.5;
+        *subDest++ = vstate->cur_color[1] * 255 + 0.5;
+        *subDest++ = vstate->cur_color[2] * 255 + 0.5;
+        
+        if (vstate->format & VARR_ALPHA) {
+            *subDest++ = vstate->cur_color[3]  * 255 + 0.5;
+        }
+        dest = (float*)subDest;
     }
     
     if (vstate->format & VARR_TEXCOORD0) {
@@ -276,13 +294,15 @@ void vxStoreVertex3(float x, float y, float z)
     }
     
     if (vstate->format & VARR_COLOR) {
-        *dest++ = vstate->cur_color[0];
-        *dest++ = vstate->cur_color[1];
-        *dest++ = vstate->cur_color[2];
-    }
-    
-    if (vstate->format & VARR_ALPHA) {
-        *dest++ = vstate->cur_color[3];
+    	unsigned char *subDest = (unsigned char*)dest;
+        *subDest++ = vstate->cur_color[0] * 255 + 0.5;
+        *subDest++ = vstate->cur_color[1] * 255 + 0.5;
+        *subDest++ = vstate->cur_color[2] * 255 + 0.5;
+        
+        if (vstate->format & VARR_ALPHA) {
+            *subDest++ = vstate->cur_color[3]  * 255 + 0.5;
+        }
+        dest = (float*)subDest;
     }
     
     if (vstate->format & VARR_TEXCOORD0) {
@@ -295,133 +315,29 @@ void vxStoreVertex3(float x, float y, float z)
     vstate->verts++;
 }
 
-void vxStoreExtraQuadVertices2(float x, float y)
-{
-    int vOffs = vstate->verts % 4;
-    
-    if (vOffs == 3 && vstate->verts > 0) {
-        vxStoreVertex2(vstate->vtx[0][0], vstate->vtx[0][1]);
-        vxStoreVertex2(vstate->vtx[2][0], vstate->vtx[2][1]);
-        vxStoreVertex2(vstate->vtx[1][0], vstate->vtx[1][1]);
-        
-        vxStoreVertex2(vstate->vtx[1][0], vstate->vtx[1][1]);
-        vxStoreVertex2(vstate->vtx[2][0], vstate->vtx[2][1]);
-        vxStoreVertex2(x, y);
-    } else {
-        vstate->verts++;
-    }
-    
-    vstate->vtx[vOffs][0] = x;
-    vstate->vtx[vOffs][1] = y;
-}
-
-void vxStoreExtraQuadStripVertices2(float x, float y)
-{
-    int vOffs = vstate->verts % 2;
-    
-    if (vOffs == 1)
-    {
-        // Store all vertices
-        vxStoreVertex2(vstate->vtx[0][0], vstate->vtx[0][1]);
-        vxStoreVertex2(x, y);
-        vstate->verts--;
-    }
-    else
-    {
-        // Always store first two vertices
-        vstate->vtx[vOffs][0] = x;
-        vstate->vtx[vOffs][1] = y;
-        vstate->verts++;
-    }
-}
-
-void vxStoreExtraQuadVertices3(float x, float y, float z)
-{
-    int vOffs = vstate->verts % 4;
-    
-    if (vOffs == 3 && vstate->verts > 0) {
-        vxStoreVertex3(vstate->vtx[0][0], vstate->vtx[0][1], vstate->vtx[0][2]);
-        vxStoreVertex3(vstate->vtx[2][0], vstate->vtx[2][1], vstate->vtx[2][2]);
-        vxStoreVertex3(vstate->vtx[1][0], vstate->vtx[1][1], vstate->vtx[1][2]);
-        
-        vxStoreVertex3(vstate->vtx[1][0], vstate->vtx[1][1], vstate->vtx[1][2]);
-        vxStoreVertex3(vstate->vtx[2][0], vstate->vtx[2][1], vstate->vtx[2][2]);
-        vxStoreVertex3(x, y, z);
-    } else {
-        vstate->verts++;
-    }
-    
-    vstate->vtx[vOffs][0] = x;
-    vstate->vtx[vOffs][1] = y;
-}
-
-void vxStoreExtraQuadStripVertices3(float x, float y, float z)
-{
-    int vOffs = vstate->verts % 2;
-    
-    if (vOffs == 1) {
-        // Store all vertices
-        vxStoreVertex3(vstate->vtx[0][0], vstate->vtx[0][1], vstate->vtx[0][2]);
-        vxStoreVertex3(x, y, z);
-        vstate->verts--;
-    } else {
-        // Always store first two vertices
-        vstate->vtx[vOffs][0] = x;
-        vstate->vtx[vOffs][1] = y;
-        vstate->vtx[vOffs][2] = z;
-        
-        vstate->verts++;
-    }
-}
-
 void vxVertex2f(float x, float y)
 {
-    if (vstate->geom == GL_QUADS)
-        vxStoreExtraQuadVertices2(x, y);
-    else if (vstate->geom == GL_QUAD_STRIP)
-        vxStoreExtraQuadStripVertices2(x, y);
-    else
-        vxStoreVertex2(x, y);
+    vxStoreVertex2(x, y);
 }
 
 void vxVertex2i(int x, int y)
 {
-    if (vstate->geom == GL_QUADS)
-        vxStoreExtraQuadVertices2(x, y);
-    else if (vstate->geom == GL_QUAD_STRIP)
-        vxStoreExtraQuadStripVertices2(x, y);
-    else
-        vxStoreVertex2(x, y);
+    vxStoreVertex2(x, y);
 }
 
 void vxVertex3f(float x, float y, float z)
 {
-    if (vstate->geom == GL_QUADS)
-        vxStoreExtraQuadVertices3(x, y, z);
-    else if (vstate->geom == GL_QUAD_STRIP)
-        vxStoreExtraQuadStripVertices3(x, y, z);
-    else
-        vxStoreVertex3(x, y, z);
+    vxStoreVertex3(x, y, z);
 }
 
 void vxVertex3d(int x, int y, int z)
 {
-    if (vstate->geom == GL_QUADS)
-        vxStoreExtraQuadVertices3(x, y, z);
-    else if (vstate->geom == GL_QUAD_STRIP)
-        vxStoreExtraQuadStripVertices3(x, y, z);
-    else
-        vxStoreVertex3(x, y, z);
+    vxStoreVertex3(x, y, z);
 }
 
 void vxVertex3fv(float *ptr)
 {
-    if (vstate->geom == GL_QUADS)
-        vxStoreExtraQuadVertices3(ptr[0], ptr[1], ptr[2]);
-    else if (vstate->geom == GL_QUAD_STRIP)
-        vxStoreExtraQuadStripVertices3(ptr[0], ptr[1], ptr[2]);
-    else
-        vxStoreVertex3(ptr[0], ptr[1], ptr[2]);
+    vxStoreVertex3(ptr[0], ptr[1], ptr[2]);
 }
 
 void vxTexCoord2f(float x, float y)
@@ -462,13 +378,10 @@ void vxColor3f(float x, float y, float z)
     if (vstate->verts == 0 && !(vstate->format & VARR_COLOR))
         vxBeginVertexArray(vstate->format | VARR_COLOR);
     
-    if (vstate->format & VARR_COLOR) {
-        vstate->cur_color[0] = x;
-        vstate->cur_color[1] = y;
-        vstate->cur_color[2] = z;
-    } else {
-        glColor4f(x, y, z, 1.0);
-    }
+    vstate->cur_color[0] = x;
+    vstate->cur_color[1] = y;
+    vstate->cur_color[2] = z;
+    vstate->cur_color[3] = 1.0;
 }
 
 void vxColor4f(float x, float y, float z, float a)
@@ -477,14 +390,10 @@ void vxColor4f(float x, float y, float z, float a)
     if (vstate->verts == 0 && !(vstate->format & (VARR_COLOR | VARR_ALPHA)))
         vxBeginVertexArray(vstate->format | (VARR_COLOR | VARR_ALPHA));
     
-    if (vstate->format & VARR_COLOR) {
-        vstate->cur_color[0] = x;
-        vstate->cur_color[1] = y;
-        vstate->cur_color[2] = z;
-        vstate->cur_color[3] = a;
-    } else {
-        glColor4f(x, y, z, a);
-    }
+    vstate->cur_color[0] = x;
+    vstate->cur_color[1] = y;
+    vstate->cur_color[2] = z;
+    vstate->cur_color[3] = a;
 }
 
 void vxColor3fv(float *ptr)
@@ -493,13 +402,10 @@ void vxColor3fv(float *ptr)
     if (vstate->verts == 0 && !(vstate->format & VARR_COLOR))
         vxBeginVertexArray(vstate->format | VARR_COLOR);
     
-    if (vstate->format & VARR_COLOR) {
-        vstate->cur_color[0] = *ptr;
-        vstate->cur_color[1] = *(ptr+1);
-        vstate->cur_color[2] = *(ptr+2);
-    } else {
-        glColor4f(ptr[0], ptr[1], ptr[2], 1.0);
-    }
+    vstate->cur_color[0] = *ptr;
+    vstate->cur_color[1] = *(ptr+1);
+    vstate->cur_color[2] = *(ptr+2);
+    vstate->cur_color[3] = 1.0;
 }
 
 void vxColor4fv(const float *ptr)
@@ -508,13 +414,10 @@ void vxColor4fv(const float *ptr)
     if (vstate->verts == 0 && !(vstate->format & (VARR_COLOR | VARR_ALPHA)))
         vxBeginVertexArray(vstate->format | (VARR_COLOR | VARR_ALPHA));
     
-    if (vstate->format & VARR_COLOR) {
-        vstate->cur_color[0] = *ptr;
-        vstate->cur_color[1] = *(ptr+1);
-        vstate->cur_color[2] = *(ptr+2);
-        vstate->cur_color[3] = *(ptr+3);
-    } else {
-        glColor4f(ptr[0], ptr[1], ptr[2], ptr[3]);
-    }
+    vstate->cur_color[0] = *ptr;
+    vstate->cur_color[1] = *(ptr+1);
+    vstate->cur_color[2] = *(ptr+2);
+    vstate->cur_color[3] = *(ptr+3);
+    vstate->cur_color[3] = 1.0;
 }
 
