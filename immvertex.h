@@ -1,3 +1,6 @@
+#ifndef _IMMVERTEX_H_
+#define _IMMVERTEX_H_
+
 //
 //  immvertex
 // 
@@ -42,9 +45,9 @@
 #define GL_QUADS                            0x0007
 #endif
 
-#ifndef GL_QUAD_STRIP
-#define GL_QUAD_STRIP                       0x0008
-#endif
+//#ifndef GL_QUAD_STRIP
+//#define GL_QUAD_STRIP                       0x0008
+//#endif
 
 #ifndef GL_POLYGON
 #define GL_POLYGON                          0x0009
@@ -54,42 +57,61 @@
 #define VARR_ALPHA 0x4
 #define VARR_NORMAL 0x8
 #define VARR_TEXCOORD0 0x10
+#define VARR_3POINT 0x20
 
 #ifdef __cplusplus
 extern "C" {
 #endif
 
 
-typedef struct vxRenderInfo {
+typedef struct vxRenderState {
 	// GL buffer which is required to draw
 	GLint vbo;
 	GLint mode;
-} vxRenderInfo;
+    
+    // vertex info
+    int format;
+    int vertex_size;
+    int verts;
+} vxRenderState;
 
+//
 // Vertex array state
+//
 
+// Begins a new vertex array using VARR_* flags
 extern void vxBeginVertexArray(int format);
+
+// Get pointer to current vertex array
 extern void *vxCurrentVertexArray();
-extern int vxEndVertexArray();
+
+// Render array of verts using info
+extern void vxRenderArray(vxRenderState info, void *verts);
 
 // Frees memory used by vertex array builder
 extern void vxDestroyState();
-    
+
+//
 // Vertex buffer state
+//
 
 // Begin storing vertices to vertex buffer. Call before vxBegin
 extern void vxBeginVertexBuffer(GLint buffer, int format);
-// End storing vertices to vertex buffer. Returns vertices stored. Call after vxEnd
-extern int vxEndVertexBuffer();
 
+// Render buffer referenced in info
+extern void vxRenderBuffer(vxRenderState info);
+
+//
 // Vertex builder
 // Note: vertices are generated using the current normal, color, and texture states
+//
 
 // Start a new array (equivalent to glBegin)
 extern void vxBegin(int flags);
+
     
 // Present array to current GLES context, or to the current vertex bufer (equivalent to glEnd)
-extern void vxEnd();
+extern vxRenderState vxEnd();
 
 extern void vxVertex2f(float x, float y);
 extern void vxVertex2i(int x, int y);
@@ -111,4 +133,6 @@ extern void vxColor4fv(const float *ptr);
 
 #ifdef __cplusplus
 }
+#endif
+
 #endif
